@@ -515,17 +515,83 @@ node ~/.claude/skills/kanban-batch/kanban-planner.js
 
 ### worktree <task-id> - 创建并绑定 worktree
 
-```bash
-# 创建 worktree
-WORKTREE=$(curl -s -X POST "${API}/projects/${PROJECT_ID}/worktrees/create" \
-  -H "Content-Type: application/json" \
-  -d "{\"branchName\": \"task/${TASK_ID}\"}" | jq -r '.item.id')
+**重要**: 不使用 Kanban API 创建 worktree（会放在项目内部），而是手动用 git 创建到项目外部，然后绑定。
 
-# 绑定并开始
-curl -X POST "${API}/tasks/${TASK_ID}/move" \
-  -H "Content-Type: application/json" \
-  -d "{\"worktreeId\": \"${WORKTREE}\", \"status\": \"in_progress\"}"
-```
+**AI 执行流程**:
+
+1. **检查工作区状态（前置条件）**
+   ```bash
+   git -C "$PROJECT_PATH" status --porcelain
+   ```
+   - 如果工作区不干净（有未提交的更改），**停止流程**
+   - 提示用户：
+     ```
+     ⚠️ 工作区不干净，有未提交的更改：
+     [列出更改的文件]
+
+     建议：请先提交或暂存当前更改，保持工作区干净后再创建 worktree。
+
+     可选操作：
+     - git stash（暂存更改）
+     - git commit（提交更改）
+     - 继续（不推荐，可能导致状态混乱）
+     ```
+   - 等待用户处理后再继续
+
+2. **分析现有 worktree 位置**
+   ```bash
+   git -C "$PROJECT_PATH" worktree list
+   ```
+   查看已有 worktree 放在哪里，推断用户偏好。
+
+3. **检查项目结构**
+   - 项目路径是什么？
+   - 同级目录有没有 `worktrees/` 文件夹？
+   - 有没有其他命名惯例？
+
+4. **提出建议并请求用户确认**
+   ```
+   === Worktree 创建计划 ===
+   任务: [任务标题]
+   分支名: fix/xxx 或 task/xxx
+   建议路径: /path/to/worktrees/branch-name
+
+   基于: [说明为什么建议这个路径]
+
+   确认创建? 或指定其他路径?
+   ```
+
+5. **用户确认后，手动创建 worktree**
+   ```bash
+   mkdir -p "$(dirname "$WORKTREE_PATH")"
+   git -C "$PROJECT_PATH" worktree add "$WORKTREE_PATH" -b "$BRANCH_NAME"
+   ```
+
+6. **刷新 Kanban 并绑定任务**
+   ```bash
+   # 刷新 Kanban worktree 列表
+   curl -s -X POST "${API}/projects/${PROJECT_ID}/sync-worktrees"
+
+   # 获取新 worktree 的 ID
+   WORKTREE_ID=$(curl -s "${API}/projects/${PROJECT_ID}/worktrees" | node -e "
+   const d=JSON.parse(require('fs').readFileSync(0,'utf8'));
+   const wt = d.items?.find(w => w.branchName === '$BRANCH_NAME');
+   console.log(wt?.id || '');
+   ")
+
+   # 绑定到任务并开始
+   curl -X POST "${API}/tasks/${TASK_ID}/move" \
+     -H "Content-Type: application/json" \
+     -d "{\"worktreeId\": \"${WORKTREE_ID}\", \"status\": \"in_progress\"}"
+   ```
+
+7. **输出结果**
+   ```
+   Worktree 已创建并绑定:
+     路径: $WORKTREE_PATH
+     分支: $BRANCH_NAME
+     任务: $TASK_TITLE
+   ```
 
 ---
 
@@ -593,3 +659,44 @@ const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 console.log(d.item?.id);
 "
 ```
+
+### Worktree 相关坑点
+
+**1. 不要用 Kanban API 创建 worktree**
+
+Kanban API 创建的 worktree 会放在项目配置的 `worktreeBasePath`（默认是项目内部 `.worktrees/`），且这个配置**无法通过 API 修改**（`UpdateProjectInputBody` 不支持）。
+
+正确做法：手动用 `git worktree add` 创建到项目外部，然后调用 `sync-worktrees` 让 Kanban 检测到它。
+
+**2. 解绑 worktreeId 用空字符串，不是 null**
+
+```bash
+# ❌ 错误 - null 不生效
+curl -X POST "${API}/tasks/{id}/move" -d '{"worktreeId": null}'
+
+# ✅ 正确 - 用空字符串
+curl -X POST "${API}/tasks/{id}/move" -d '{"worktreeId": ""}'
+```
+
+**3. 删除外部 worktree 后需同步**
+
+```bash
+# 删除 worktree
+git worktree remove /path/to/worktree
+
+# 同步 Kanban（否则它还认为 worktree 存在）
+curl -s -X POST "${API}/projects/${PROJECT_ID}/sync-worktrees"
+```
+
+**4. Kanban 会自动检测外部创建的 worktree**
+
+只要 worktree 属于该项目的 git 仓库，`sync-worktrees` 或 `worktrees` 列表接口就能发现它，无论路径在哪里。
+
+### 项目配置限制
+
+`UpdateProjectInputBody` 只支持以下字段：
+- `name` - 项目名称
+- `description` - 项目描述
+- `hidePath` - 是否隐藏路径
+
+**不支持修改**：`worktreeBasePath`、`defaultBranch`、`path` 等。这些只能在创建项目时设置。
