@@ -407,6 +407,9 @@ function getDashboardHtml() {
           <button onclick="navigate('config')" class="nav-btn px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-page="config">
             ⚙️ 配置
           </button>
+          <button onclick="navigate('insights')" class="nav-btn px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-page="insights">
+            🔍 审计洞察
+          </button>
         </div>
       </div>
     </div>
@@ -429,8 +432,16 @@ function getDashboardHtml() {
           <div class="text-3xl font-bold text-success">-</div>
         </div>
         <div id="card-issues" class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 card-hover">
-          <div class="text-sm font-medium text-gray-500 mb-2">待处理问题</div>
-          <div class="text-3xl font-bold text-warning">-</div>
+          <div class="text-sm font-medium text-gray-500 mb-2">审计问题</div>
+          <div class="flex items-baseline gap-2">
+            <span id="issues-count" class="text-3xl font-bold text-warning">-</span>
+            <span id="issues-resolved" class="text-sm text-green-600">已修复: -</span>
+          </div>
+          <div class="mt-3">
+            <div class="relative h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div id="issues-progress" class="absolute left-0 top-0 h-full rounded-full" style="width: 0%; background-color: #22c55e;"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -533,6 +544,38 @@ function getDashboardHtml() {
         </div>
       </div>
     </div>
+
+    <!-- 审计洞察页 -->
+    <div id="page-insights" class="page hidden fade-in">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+          <div class="text-sm font-medium text-gray-500 mb-2">待处理问题</div>
+          <div id="insights-total" class="text-4xl font-bold text-orange-500">-</div>
+          <div id="insights-resolved" class="text-sm text-green-600 mt-2">已修复: -</div>
+        </div>
+        <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+          <div class="text-sm font-medium text-gray-500 mb-2">问题分布</div>
+          <div id="insights-severity" class="flex items-end justify-between h-32 pt-4">
+            <!-- 柱状图动态填充 -->
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+          <div class="text-sm font-medium text-gray-500 mb-2">修复进度</div>
+          <div id="insights-progress" class="mt-4">
+            <div class="relative h-6 bg-gray-200 rounded-full overflow-hidden">
+              <div id="progress-bar" class="absolute left-0 top-0 h-full rounded-full transition-all" style="width: 0%; min-width: 8px; background-color: #22c55e;"></div>
+            </div>
+            <div id="progress-text" class="text-sm text-gray-600 mt-2 text-center">-</div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">各级别问题详情</h3>
+        <div id="insights-details" class="space-y-3">
+          <div class="text-gray-400">加载中...</div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -561,6 +604,7 @@ function getDashboardHtml() {
       if (page === 'tasks') { fetchTaskDetails(); loadHistory(); }
       if (page === 'launch') loadTaskTypes();
       if (page === 'config') loadConfig();
+      if (page === 'insights') loadInsights();
     }
 
     // === API 调用 ===
@@ -608,7 +652,9 @@ function getDashboardHtml() {
         document.querySelector('#card-projects .text-3xl').textContent = projectList.length;
         document.querySelector('#card-modules .text-3xl').textContent = '-';
         document.querySelector('#card-coverage .text-3xl').textContent = '-';
-        document.querySelector('#card-issues .text-3xl').textContent = '-';
+        document.getElementById('issues-count').textContent = '-';
+        document.getElementById('issues-resolved').textContent = '';
+        document.getElementById('issues-progress').style.width = '0%';
         document.getElementById('project-list').innerHTML = 
           projectList.length > 0 ? projectList.map(p => 
             '<div class="px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium cursor-pointer hover:bg-blue-100" onclick="document.getElementById(\\'project-selector\\').value=\\'' + p.path + '\\';switchProject(\\'' + p.path + '\\')">' + p.name + '</div>'
@@ -626,7 +672,15 @@ function getDashboardHtml() {
       document.querySelector('#card-projects .text-3xl').textContent = projectList.length;
       document.querySelector('#card-modules .text-3xl').textContent = projectData.stats?.total || 0;
       document.querySelector('#card-coverage .text-3xl').textContent = projectData.stats?.failed > 0 ? projectData.stats.failed + ' 失败' : '✓';
-      document.querySelector('#card-issues .text-3xl').textContent = projectData.stats?.auditEnabled || 0;
+
+      // 审计问题卡片
+      const totalIssues = audit.totalIssues || 0;
+      const totalResolved = audit.history?.totalResolved || 0;
+      const totalAll = totalIssues + totalResolved;
+      const pct = totalAll > 0 ? Math.round((totalResolved / totalAll) * 100) : 0;
+      document.getElementById('issues-count').textContent = totalIssues;
+      document.getElementById('issues-resolved').textContent = '已修复: ' + totalResolved;
+      document.getElementById('issues-progress').style.width = pct + '%';
 
       // 模块状态列表 - 按状态分组，失败的排在最前面
       const modules = projectData.modules || [];
@@ -942,6 +996,74 @@ function getDashboardHtml() {
       setTimeout(hideConfigMessages, 3000);
     }
 
+    // === 审计洞察 ===
+    async function loadInsights() {
+      if (!currentProject) return;
+      const audit = await api('/audit-status');
+
+      // 总问题数和已修复数
+      document.getElementById('insights-total').textContent = audit.totalIssues || 0;
+      const totalResolved = audit.history?.totalResolved || 0;
+      document.getElementById('insights-resolved').textContent = '已修复: ' + totalResolved;
+
+      // 修复进度条
+      const total = (audit.totalIssues || 0) + totalResolved;
+      const pct = total > 0 ? Math.round((totalResolved / total) * 100) : 0;
+      document.getElementById('progress-bar').style.width = pct + '%';
+      document.getElementById('progress-text').textContent = totalResolved + ' / ' + total + ' (' + pct + '%)';
+
+      // 问题分布柱状图
+      const sc = audit.severityCounts || { critical: 0, high: 0, medium: 0, low: 0 };
+      const maxCount = Math.max(sc.critical, sc.high, sc.medium, sc.low, 1);
+      const bars = [
+        { label: 'Critical', count: sc.critical, color: 'bg-red-500' },
+        { label: 'High', count: sc.high, color: 'bg-orange-500' },
+        { label: 'Medium', count: sc.medium, color: 'bg-yellow-500' },
+        { label: 'Low', count: sc.low, color: 'bg-green-500' }
+      ];
+
+      const barHtml = bars.map(b => {
+        const h = Math.max(8, Math.round((b.count / maxCount) * 80));
+        return '<div class=\"flex flex-col items-center flex-1\">' +
+          '<div class=\"' + b.color + ' w-full rounded-t\" style=\"height: ' + h + 'px\"></div>' +
+          '<div class=\"text-xs font-medium mt-1\">' + b.count + '</div>' +
+          '<div class=\"text-xs text-gray-500\">' + b.label + '</div>' +
+        '</div>';
+      }).join('');
+      document.getElementById('insights-severity').innerHTML = barHtml;
+
+      // 详情列表 - 按模块分组
+      const modules = audit.modules || [];
+      const byLevel = { critical: [], high: [], medium: [], low: [] };
+      for (const m of modules) {
+        if (m.issueCount > 0 && byLevel[m.severity]) {
+          byLevel[m.severity].push(m);
+        }
+      }
+
+      const levelInfo = {
+        critical: { icon: '🔴', name: 'Critical', cls: 'text-red-600' },
+        high: { icon: '🟠', name: 'High', cls: 'text-orange-600' },
+        medium: { icon: '🟡', name: 'Medium', cls: 'text-yellow-600' },
+        low: { icon: '🟢', name: 'Low', cls: 'text-green-600' }
+      };
+
+      let detailsHtml = '';
+      for (const level of ['critical', 'high', 'medium', 'low']) {
+        const items = byLevel[level];
+        if (items.length === 0) continue;
+        const info = levelInfo[level];
+        detailsHtml += '<div class=\"border-l-4 border-' + level + '-500 pl-4 py-2\">' +
+          '<div class=\"font-medium ' + info.cls + '\">' + info.icon + ' ' + info.name + ' (' + items.length + ' 模块)</div>' +
+          '<div class=\"text-sm text-gray-600 mt-1\">' +
+            items.slice(0, 5).map(m => m.path + ' (' + m.issueCount + ')').join(', ') +
+            (items.length > 5 ? ' ...' : '') +
+          '</div>' +
+        '</div>';
+      }
+      document.getElementById('insights-details').innerHTML = detailsHtml || '<div class=\"text-green-600\">✅ 无待处理问题</div>';
+    }
+
     // === 初始化 ===
     loadProjects().then(() => navigate('overview'));
     setInterval(() => {
@@ -1102,6 +1224,12 @@ async function handleRequest(req, res) {
 
     if (url.pathname === '/api/task-types') {
       res.end(JSON.stringify({ types: taskManager.getTaskTypes() }));
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/cache/clear') {
+      apiCache.clear();
+      res.end(JSON.stringify({ success: true, message: 'Cache cleared' }));
       return;
     }
 

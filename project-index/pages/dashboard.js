@@ -940,37 +940,48 @@
 
     function renderInsights(insights) {
       document.getElementById("insights-last-sync").textContent = `最后同步: ${insights.lastSync}`;
-      document.getElementById("insights-audit-total").textContent = `${insights.audit.total} 个问题`;
+      document.getElementById("insights-audit-total").textContent = insights.audit.total;
 
-      // 审计统计：模块数、文件数和覆盖率
+      const trendEl = document.getElementById("insights-audit-trend");
+      if (trendEl) {
+        trendEl.innerHTML = `<span class="material-symbols-outlined text-sm">trending_up</span>${insights.audit.trend}%`;
+      }
+
+      const history = insights.audit.history || { resolved: 0, previous: 0, new: 0, totalResolved: 0 };
+      const totalResolved = Number(history.totalResolved || 0);
+      const total = insights.audit.total + totalResolved;
+      const pct = total > 0 ? Math.round((totalResolved / total) * 100) : 0;
+
+      // 更新已修复数字
+      const resolvedEl = document.getElementById("insights-audit-resolved");
+      if (resolvedEl) {
+        resolvedEl.textContent = totalResolved;
+      }
+
+      // 中间的进度条
+      const historyEl = document.getElementById("insights-audit-history");
+      if (historyEl) {
+        historyEl.innerHTML = `
+          <div class="flex flex-col gap-2">
+            <div class="relative h-3 bg-border-dark rounded-full overflow-hidden">
+              <div class="absolute left-0 top-0 h-full bg-accent-green rounded-full transition-all" style="width: ${pct}%;"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-text-muted">
+              <span>0%</span>
+              <span class="text-white font-bold">${pct}%</span>
+              <span>100%</span>
+            </div>
+          </div>
+        `;
+      }
+
+      // 审计统计信息
       const auditedModules = insights.audit.modulesScanned || 0;
       const files = insights.audit.filesScanned || 0;
       const discovered = insights.audit.discoveredFiles || 0;
-      const uncovered = insights.audit.uncoveredFiles || 0;
       const coverage = insights.audit.coveragePercent || 0;
-
-      let statsText = `共 ${auditedModules} 个模块有审计报告，覆盖 ${files}/${discovered} 个文件 (${coverage}%)`;
-      if (uncovered > 0) {
-        statsText += ` · ${uncovered} 个未覆盖`;
-      }
-      document.getElementById("insights-audit-stats").textContent = statsText;
-
-      document.getElementById("insights-audit-trend").innerHTML = `<span class="material-symbols-outlined text-sm">trending_up</span>${insights.audit.trend}%`;
-
-      const history = insights.audit.history || { resolved: 0, previous: 0, new: 0 };
-      const historyEl = document.getElementById("insights-audit-history");
-      if (historyEl) {
-        const bars = [
-          { key: 'resolved', value: Number(history.resolved || 0), className: 'bg-accent-green' },
-          { key: 'previous', value: Number(history.previous || 0), className: 'bg-border-dark' },
-          { key: 'new', value: Number(history.new || 0), className: 'bg-accent-red' }
-        ];
-        const maxValue = Math.max(...bars.map(bar => bar.value), 1);
-        historyEl.innerHTML = bars.map((bar) => {
-          const heightPct = bar.value > 0 ? Math.max(15, Math.round((bar.value / maxValue) * 100)) : 8;
-          return `<div class="w-2 rounded-sm ${bar.className}" style="height: ${heightPct}%" title="${bar.key}: ${bar.value}"></div>`;
-        }).join("");
-      }
+      document.getElementById("insights-audit-stats").textContent =
+        `${auditedModules} 个模块 · ${files}/${discovered} 文件 · ${coverage}% 覆盖`;
 
       const bars = document.getElementById("insights-audit-bars");
       bars.innerHTML = insights.audit.bars.map((bar) => {

@@ -96,13 +96,17 @@ async function updateAuditHistory(scanPath, totalIssues, results) {
 
   const latest = shouldAppend ? snapshot : lastSnapshot;
   if (!latest) {
-    return { resolved: 0, previous: 0, new: 0 };
+    return { resolved: 0, previous: 0, new: 0, totalResolved: 0 };
   }
+
+  // Calculate cumulative resolved count
+  const totalResolved = snapshots.reduce((sum, s) => sum + Number(s.resolved || 0), 0);
 
   return {
     resolved: Number(latest.resolved || 0),
     previous: Math.max(0, Number(latest.total || 0) - Number(latest.new || 0)),
-    new: Number(latest.new || 0)
+    new: Number(latest.new || 0),
+    totalResolved
   };
 }
 

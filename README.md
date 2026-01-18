@@ -1,8 +1,6 @@
-# mk Skills
+# Claude Code Skills
 
-本仓库存放自用的 Skills，通过 symlink 同步到 `~/.claude/skills/`。
-
-<img width="1890" height="880" alt="image" src="https://github.com/user-attachments/assets/8da58bc1-0863-476e-842e-ca7adccd7471" />
+本仓库存放自定义 Claude Code Skills，通过 symlink 同步到 `~/.claude/skills/`。
 
 ## 快速开始
 

@@ -24,9 +24,10 @@ import { parseArgs, fileExists } from './shared.js';
 function parseAuditMd(content) {
   const lines = content.split('\n');
 
-  // Extract header (everything before ## Issues)
-  const issueHeaderIdx = lines.findIndex(l => l.startsWith('## Issues'));
-  const header = issueHeaderIdx > 0 ? lines.slice(0, issueHeaderIdx).join('\n') : '';
+  // Extract header (everything before ## Summary, not ## Issues)
+  // This prevents Summary duplication when generateAuditMd adds it back
+  const summaryHeaderIdx = lines.findIndex(l => l.startsWith('## Summary'));
+  const header = summaryHeaderIdx > 0 ? lines.slice(0, summaryHeaderIdx).join('\n') : '';
 
   // Extract severity
   const severityMatch = content.match(/Severity:\s*\*\*(\w+)\*\*/i);
@@ -60,7 +61,16 @@ function parseAuditMd(content) {
 function generateAuditMd(data) {
   const { header, severity, summary, issues } = data;
 
-  let content = header.trim() + '\n\n';
+  // Update severity in header if changed
+  let updatedHeader = header.trim();
+  if (severity) {
+    updatedHeader = updatedHeader.replace(
+      /Severity:\s*\*\*\w+\*\*/i,
+      `Severity: **${severity.toUpperCase()}**`
+    );
+  }
+
+  let content = updatedHeader + '\n\n';
 
   if (issues.length === 0) {
     // All issues resolved

@@ -422,20 +422,18 @@
               </div>
 
               <div class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark/40 p-6">
-                <div class="flex justify-between items-start">
+                <div class="flex justify-between items-center">
                   <div>
-                    <p class="text-text-muted text-xs font-bold uppercase tracking-widest mb-1">审计问题</p>
-                    <div class="flex items-end gap-3">
-                      <p class="text-white text-3xl font-black tracking-tight" id="insights-audit-total">0 个问题</p>
-                      <div class="flex items-end gap-1 h-8" id="insights-audit-history"></div>
-                    </div>
-                    <p class="text-text-muted text-[10px] mt-1" id="insights-audit-stats">--</p>
+                    <p class="text-text-muted text-xs font-bold uppercase tracking-widest mb-1">待处理</p>
+                    <p class="text-white text-4xl font-black tracking-tight" id="insights-audit-total">0</p>
                   </div>
-                  <div class="flex items-center gap-1 bg-accent-red/10 text-accent-red px-2 py-1 rounded text-xs font-bold" id="insights-audit-trend">
-                    <span class="material-symbols-outlined text-sm">trending_up</span>
-                    0%
+                  <div class="flex-1 mx-8" id="insights-audit-history"></div>
+                  <div>
+                    <p class="text-text-muted text-xs font-bold uppercase tracking-widest mb-1 text-right">已修复</p>
+                    <p class="text-accent-green text-4xl font-black tracking-tight text-right" id="insights-audit-resolved">0</p>
                   </div>
                 </div>
+                <p class="text-text-muted text-[10px]" id="insights-audit-stats">--</p>
                 <div class="grid grid-cols-4 items-end gap-4 h-32 mt-4 px-2" id="insights-audit-bars"></div>
                 <div class="mt-4 pt-4 border-t border-border-dark">
                   <p class="text-text-muted text-[10px] font-bold uppercase tracking-widest mb-2">目录覆盖率</p>

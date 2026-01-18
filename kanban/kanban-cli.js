@@ -321,7 +321,17 @@ async function cmdAdd(title, options) {
   }
 
   const result = await createTask(project.id, title, options);
-  console.log(`Created: ${result.item?.id || result.id}`);
+  const taskId = result.item?.id || result.id;
+  console.log(`Created: ${taskId}`);
+
+  // 显示创建的任务详情
+  const details = [];
+  if (options.priority !== undefined) details.push(`P${options.priority}`);
+  if (options.tags?.length > 0) details.push(`tags: ${options.tags.join(', ')}`);
+  if (options.description) details.push(`desc: ${options.description.slice(0, 50)}${options.description.length > 50 ? '...' : ''}`);
+  if (details.length > 0) {
+    console.log(`  ${details.join(' | ')}`);
+  }
 }
 
 async function cmdDone(shortId) {
@@ -331,7 +341,7 @@ async function cmdDone(shortId) {
     process.exit(1);
   }
   const taskId = await resolveTaskId(shortId, project.id);
-  await updateTask(taskId, { status: "done" });
+  await moveTask(taskId, { status: "done" });
   console.log(`Marked as done: ${taskId}`);
 }
 
@@ -342,7 +352,7 @@ async function cmdStart(shortId) {
     process.exit(1);
   }
   const taskId = await resolveTaskId(shortId, project.id);
-  await updateTask(taskId, { status: "in_progress" });
+  await moveTask(taskId, { status: "in_progress" });
   console.log(`Started: ${taskId}`);
 }
 
