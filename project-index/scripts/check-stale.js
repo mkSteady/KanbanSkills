@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 /**
- * Check Stale Docs - Detect outdated documentation
- * Usage: node check-stale.js [path] [--json] [--stale-only] [--type=doc|claude|audit|all]
+ * Check Stale - Detect outdated documentation and tests
+ * Usage: node check-stale.js [path] [--json] [--stale-only] [--type=doc|claude|audit|test|all]
  *
- * Compares doc mtime with max(code files mtime) in subdirectories.
- * If code is newer than docs, marks as stale.
+ * Types:
+ *   doc/claude - Check CLAUDE.md freshness
+ *   audit      - Check AUDIT.md freshness
+ *   test       - Check test coverage freshness (from .test-map.json)
+ *   all        - Check all types
+ *
+ * Compares doc/test mtime with source code mtime.
+ * If code is newer than docs/tests, marks as stale.
  *
  * Supports .stale-config.json with include/ignore patterns
  */
@@ -29,8 +35,64 @@ const DOC_FILENAMES = new Set(['CLAUDE.md', 'AUDIT.md']);
 
 const DOC_TYPES = {
   claude: 'CLAUDE.md',
-  audit: 'AUDIT.md'
+  audit: 'AUDIT.md',
+  test: '.test-map.json'  // Special: uses test-map data
 };
+
+/**
+ * Load .test-map.json for test coverage tracking
+ */
+async function loadTestMap(rootPath) {
+  const mapPath = path.join(rootPath, '.test-map.json');
+  try {
+    const content = await fs.readFile(mapPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Convert test-map data to stale results format
+ */
+function testMapToResults(testMap, config) {
+  if (!testMap?.modules) return [];
+
+  const results = [];
+
+  for (const [modulePath, data] of Object.entries(testMap.modules)) {
+    if (!shouldProcess(modulePath, config)) continue;
+
+    const staleFiles = Object.entries(data.files || {})
+      .filter(([, f]) => f.status === 'stale')
+      .map(([name, f]) => ({ path: f.path, mtime: null }));
+
+    const untestedFiles = Object.entries(data.files || {})
+      .filter(([, f]) => f.status === 'untested')
+      .map(([name, f]) => ({ path: f.path, mtime: null }));
+
+    // Module is stale if has stale tests or low coverage
+    const isStale = data.stale > 0;
+    const isMissing = data.untested > 0 && data.covered === 0;
+
+    results.push({
+      path: modulePath,
+      status: isMissing ? 'missing' : (isStale ? 'stale' : 'fresh'),
+      coverage: data.coverage,
+      stats: { covered: data.covered, stale: data.stale, untested: data.untested, total: data.total },
+      changedFiles: staleFiles,
+      untestedFiles
+    });
+  }
+
+  // Sort: missing first, then stale, then fresh
+  results.sort((a, b) => {
+    const order = { missing: 0, stale: 1, fresh: 2 };
+    return order[a.status] - order[b.status];
+  });
+
+  return results;
+}
 
 /**
  * Load .stale-config.json from project root
@@ -283,6 +345,7 @@ function normalizeType(typeArg) {
   const normalized = typeArg.trim().toLowerCase();
   if (normalized === 'doc' || normalized === 'claude') return 'claude';
   if (normalized === 'audit') return 'audit';
+  if (normalized === 'test') return 'test';
   if (normalized === 'all') return 'all';
   return null;
 }
@@ -368,6 +431,56 @@ function displayResults(results, docName, rootPath, staleOnly) {
   }
 }
 
+/**
+ * Display test coverage results
+ */
+function displayTestResults(results, rootPath, staleOnly) {
+  console.log(`Checking test coverage in: ${rootPath}\n`);
+
+  const staleCount = results.filter(r => r.status === 'stale').length;
+  const missingCount = results.filter(r => r.status === 'missing').length;
+  const freshCount = results.filter(r => r.status === 'fresh').length;
+
+  for (const r of results) {
+    if (staleOnly && r.status !== 'stale' && r.status !== 'missing') continue;
+
+    const pathDisplay = r.path.replace('js/agents/', '').padEnd(35);
+    const stats = r.stats || {};
+
+    if (r.status === 'missing') {
+      console.log(`${colorize('missing')} ${pathDisplay} ${r.coverage} (untested: ${stats.untested})`);
+    } else if (r.status === 'stale') {
+      console.log(`${colorize('stale')} ${pathDisplay} ${r.coverage} (stale: ${stats.stale}, untested: ${stats.untested})`);
+      if (r.changedFiles && r.changedFiles.length > 0) {
+        const maxShow = 3;
+        const files = r.changedFiles.slice(0, maxShow);
+        for (const f of files) {
+          console.log(`        ├─ ${path.basename(f.path)}`);
+        }
+        if (r.changedFiles.length > maxShow) {
+          console.log(`        └─ ... +${r.changedFiles.length - maxShow} more stale`);
+        }
+      }
+    } else {
+      console.log(`${colorize('fresh')} ${pathDisplay} ${r.coverage} (covered: ${stats.covered}/${stats.total})`);
+    }
+  }
+
+  // Summary
+  const totalStale = results.reduce((sum, r) => sum + (r.stats?.stale || 0), 0);
+  const totalUntested = results.reduce((sum, r) => sum + (r.stats?.untested || 0), 0);
+  const totalCovered = results.reduce((sum, r) => sum + (r.stats?.covered || 0), 0);
+  const totalFiles = results.reduce((sum, r) => sum + (r.stats?.total || 0), 0);
+
+  console.log(`\n${'─'.repeat(60)}`);
+  console.log(`Modules: ${results.length} | Stale: ${staleCount} | Missing: ${missingCount} | Fresh: ${freshCount}`);
+  console.log(`Files: ${totalFiles} | Covered: ${totalCovered} | Stale: ${totalStale} | Untested: ${totalUntested}`);
+
+  if (staleCount > 0 || missingCount > 0) {
+    console.log(`\nRun 'node scripts/test-mapper.js --refresh' to update test map.`);
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const jsonMode = args.includes('--json');
@@ -384,7 +497,7 @@ async function main() {
     process.exit(1);
   }
 
-  const typesToCheck = normalizedType === 'all' ? ['claude', 'audit'] : [normalizedType];
+  const typesToCheck = normalizedType === 'all' ? ['claude', 'audit', 'test'] : [normalizedType];
 
   // For touch mode, paths come after --touch flag
   const touchIndex = args.indexOf('--touch');
@@ -450,8 +563,19 @@ async function main() {
   const resultsByType = {};
 
   for (const type of typesToCheck) {
-    const docName = DOC_TYPES[type];
-    resultsByType[type] = await collectResults(docName, rootPath, config, ignorePatterns);
+    if (type === 'test') {
+      // Test type uses .test-map.json data
+      const testMap = await loadTestMap(rootPath);
+      if (testMap) {
+        resultsByType[type] = testMapToResults(testMap, config);
+      } else {
+        console.log('Warning: .test-map.json not found. Run test-mapper.js first.\n');
+        resultsByType[type] = [];
+      }
+    } else {
+      const docName = DOC_TYPES[type];
+      resultsByType[type] = await collectResults(docName, rootPath, config, ignorePatterns);
+    }
   }
 
   if (jsonMode) {
@@ -460,7 +584,8 @@ async function main() {
     } else {
       console.log(JSON.stringify({
         claude: resultsByType.claude || [],
-        audit: resultsByType.audit || []
+        audit: resultsByType.audit || [],
+        test: resultsByType.test || []
       }, null, 2));
     }
     return;
@@ -468,19 +593,29 @@ async function main() {
 
   if (typesToCheck.length === 1) {
     const type = typesToCheck[0];
-    displayResults(resultsByType[type], DOC_TYPES[type], rootPath, staleOnly);
+    if (type === 'test') {
+      displayTestResults(resultsByType[type], rootPath, staleOnly);
+    } else {
+      displayResults(resultsByType[type], DOC_TYPES[type], rootPath, staleOnly);
+    }
     return;
   }
 
   const sections = [
     { type: 'claude', title: DOC_TYPES.claude },
-    { type: 'audit', title: DOC_TYPES.audit }
+    { type: 'audit', title: DOC_TYPES.audit },
+    { type: 'test', title: 'Test Coverage' }
   ];
 
   sections.forEach((section, index) => {
+    if (!resultsByType[section.type]) return;
     if (index > 0) console.log('');
     console.log(`=== ${section.title} ===`);
-    displayResults(resultsByType[section.type] || [], DOC_TYPES[section.type], rootPath, staleOnly);
+    if (section.type === 'test') {
+      displayTestResults(resultsByType[section.type] || [], rootPath, staleOnly);
+    } else {
+      displayResults(resultsByType[section.type] || [], DOC_TYPES[section.type], rootPath, staleOnly);
+    }
   });
 }
 

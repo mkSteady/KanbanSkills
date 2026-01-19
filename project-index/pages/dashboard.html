@@ -38,6 +38,9 @@
   <link rel="stylesheet" href="dashboard.css">
 </head>
 <body class="bg-background-dark text-white font-display min-h-screen">
+  <!-- Toast 通知容器 -->
+  <div id="toast-container" class="fixed top-20 right-6 z-[200] flex flex-col gap-2"></div>
+
   <div class="min-h-screen flex flex-col">
     <header class="border-b border-border-dark bg-background-dark/90 backdrop-blur sticky top-0 z-50">
       <div class="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
@@ -242,9 +245,36 @@
                 <p class="text-text-muted">监控任务健康状态、重试情况与实时执行日志。</p>
               </div>
               <div class="flex items-center gap-2">
-                <button class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border-dark text-xs font-semibold hover:bg-surface-dark transition-colors">
-                  <span class="material-symbols-outlined text-sm">filter_list</span>
-                  筛选
+                <div class="relative" id="filter-dropdown-container">
+                  <button class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border-dark text-xs font-semibold hover:bg-surface-dark transition-colors" id="ops-filter-btn">
+                    <span class="material-symbols-outlined text-sm">filter_list</span>
+                    <span id="ops-filter-label">全部</span>
+                    <span class="material-symbols-outlined text-sm">expand_more</span>
+                  </button>
+                  <div class="absolute top-full left-0 mt-1 w-48 bg-surface-dark border border-border-dark rounded-lg shadow-xl z-50 hidden" id="ops-filter-menu">
+                    <div class="p-2 border-b border-border-dark">
+                      <p class="text-[10px] text-text-muted uppercase tracking-wider mb-2">状态筛选</p>
+                      <button class="filter-option w-full text-left px-3 py-2 text-sm rounded hover:bg-border-dark transition-colors" data-filter-status="all">全部状态</button>
+                      <button class="filter-option w-full text-left px-3 py-2 text-sm rounded hover:bg-border-dark transition-colors" data-filter-status="running">
+                        <span class="inline-block w-2 h-2 rounded-full bg-primary mr-2"></span>运行中
+                      </button>
+                      <button class="filter-option w-full text-left px-3 py-2 text-sm rounded hover:bg-border-dark transition-colors" data-filter-status="failed">
+                        <span class="inline-block w-2 h-2 rounded-full bg-accent-red mr-2"></span>失败
+                      </button>
+                      <button class="filter-option w-full text-left px-3 py-2 text-sm rounded hover:bg-border-dark transition-colors" data-filter-status="completed">
+                        <span class="inline-block w-2 h-2 rounded-full bg-accent-green mr-2"></span>成功
+                      </button>
+                    </div>
+                    <div class="p-2">
+                      <p class="text-[10px] text-text-muted uppercase tracking-wider mb-2">任务类型</p>
+                      <button class="filter-option w-full text-left px-3 py-2 text-sm rounded hover:bg-border-dark transition-colors" data-filter-type="all">全部类型</button>
+                      <div id="filter-type-options"></div>
+                    </div>
+                  </div>
+                </div>
+                <button class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border-dark text-xs font-semibold hover:bg-surface-dark transition-colors" id="ops-group-toggle" title="切换分组视图">
+                  <span class="material-symbols-outlined text-sm">view_agenda</span>
+                  分组
                 </button>
                 <button class="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-background-dark text-xs font-bold hover:brightness-110 transition-all" id="ops-run-all">
                   <span class="material-symbols-outlined text-sm">play_arrow</span>

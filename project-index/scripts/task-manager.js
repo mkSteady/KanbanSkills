@@ -46,7 +46,8 @@ export const TASK_TYPES = {
       '--no-audit': '跳过审计',
       '--dry-run': '只预览，不执行',
       '--concurrency': '并发数 (默认 6)',
-      '--resume': '从中断处继续'
+      '--resume': '从中断处继续',
+      '--retry-failed': '仅重试失败任务'
     }
   },
   'update-bg': {
@@ -91,6 +92,19 @@ export const TASK_TYPES = {
     args: {
       '--auto': '自动生成所有层级',
       '--layer': '指定层级 (1/2/3)'
+    }
+  },
+  'test-generator': {
+    script: 'test-generator.js',
+    description: '批量生成测试文件',
+    args: {
+      '--untested': '仅未测试文件 (默认)',
+      '--stale': '仅过期测试',
+      '--all': '未测试 + 过期',
+      '--dry-run': '只预览，不执行',
+      '--concurrency': '并发数 (默认 3)',
+      '--resume': '从中断处继续',
+      '--retry-failed': '仅重试失败任务'
     }
   }
 };

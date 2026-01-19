@@ -33,21 +33,23 @@ node scripts/dashboard.js --open
 ### 任务启动器
 
 预设任务一键启动：
-- **模块分析**: 文档更新 + 代码审计
-- **文档更新**: 仅更新 CLAUDE.md
-- **审计扫描**: 仅运行安全审计
-- **Stale 检查**: 检测过期文档
+- **完整索引**: 文档更新 + 代码审计
+- **检测过期**: 只检测过期模块
+- **测试分析**: 测试覆盖分析
+- **生成测试**: 批量生成测试文件
 
-点击工具卡片选中，配置参数后点击"开始任务"。
+点击工具卡片选中，配置参数（并发数、索引深度等）后点击"开始任务"。
+任务启动后会显示 Toast 通知。
 
 ### 运维中心
 
 后台任务管理：
-- 任务进度条
-- 子任务状态列表
-- 失败任务重试
-- 堆栈跟踪查看
-- 成功率统计
+- **任务列表**: 显示所有子任务状态
+- **筛选功能**: 按状态（运行中/失败/成功）或任务类型筛选
+- **分组视图**: 按任务类型分组，可展开/折叠
+- **失败重试**: 点击重试按钮只重试失败任务
+- **任务详情**: 查看日志、堆栈跟踪、参数
+- **ETA 预估**: 基于历史耗时预估剩余时间
 
 ### 项目洞察
 
@@ -88,13 +90,25 @@ Dashboard 后端提供以下 API：
 
 | 端点 | 说明 |
 |------|------|
+| `GET /api/projects` | 已注册项目列表 |
 | `GET /api/project-data/{path}` | 项目数据（modules, coverage） |
-| `GET /api/tasks` | 任务列表 |
+| `GET /api/tasks` | 任务摘要列表 |
 | `GET /api/task-details/{name}` | 细粒度子任务 |
-| `POST /api/start-task` | 启动后台任务 |
-| `POST /api/retry-task` | 重试失败任务 |
+| `GET /api/history/{name}` | 任务执行历史 |
+| `GET /api/task-types` | 可用任务类型 |
+| `GET /api/eta` | 剩余时间预估 |
+| `POST /api/tasks/start` | 启动任务 |
+| `POST /api/tasks/{name}/retry/{id}` | 重试失败任务 |
+| `POST /api/tasks/{name}/cancel/{id}` | 取消运行中任务 |
+| `DELETE /api/tasks/{name}/{id}` | 删除任务记录 |
+| `DELETE /api/tasks/{name}/completed` | 清理已完成任务 |
 | `GET /api/config` | 获取配置 |
-| `POST /api/config` | 保存配置 |
+| `PUT /api/config` | 保存配置 |
+| `GET /api/audit-status` | 审计状态统计 |
+| `GET /api/test-status` | 测试覆盖状态 |
+| `GET /api/stale-status` | Stale 检测状态 |
+| `GET /api/cached-data` | 缓存数据 |
+| `POST /api/cached-data` | 更新缓存 |
 
 ## 数据文件
 

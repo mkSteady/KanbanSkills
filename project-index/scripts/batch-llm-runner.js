@@ -412,10 +412,12 @@ export class BatchRunner {
 
     let progress = await this.loadProgress();
     const resumeMode = options.resume || progress.status === 'running';
+    const retryFailedMode = options.retryFailed === true;
     let itemsToProcess;
     let existingResults = [];
 
     if (resumeMode && progress.status === 'running') {
+      // Resume interrupted run
       await this.log(`Resuming from checkpoint...`);
       await this.loadTaskStates();
 
@@ -424,6 +426,32 @@ export class BatchRunner {
       itemsToProcess = progress.items.filter(item => !completedSet.has(item.id));
       existingResults = progress.results || [];
       await this.log(`Remaining: ${itemsToProcess.length}`);
+    } else if (retryFailedMode || (options.resume && progress.status !== 'running')) {
+      // Retry failed tasks from previous completed run
+      await this.log(`Retrying failed tasks...`);
+      await this.loadTaskStates();
+
+      // Find failed/timeout tasks
+      const failedTasks = Array.from(this.taskStates.values())
+        .filter(t => t.status === 'failed' || t.status === 'timeout');
+
+      if (failedTasks.length === 0) {
+        await this.log(`No failed tasks to retry`);
+        await this.log(`Completed`);
+        return [];
+      }
+
+      // Reset failed tasks to pending for retry
+      itemsToProcess = failedTasks.map(t => t.context || { id: t.id, modulePath: t.module });
+      for (const task of failedTasks) {
+        await this.updateTaskState(task.id, {
+          status: 'pending',
+          error: null,
+          retryCount: (task.retryCount || 0) + 1
+        });
+      }
+      existingResults = progress.results?.filter(r => !failedTasks.some(t => t.id === r.id)) || [];
+      await this.log(`Retrying: ${itemsToProcess.length} failed tasks`);
     } else {
       const allItems = await handlers.scan(cwd);
       await this.log(`Scanned: ${allItems.length} items`);

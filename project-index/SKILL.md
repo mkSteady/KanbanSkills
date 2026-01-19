@@ -94,6 +94,12 @@ node scripts/module-analyzer.js --all --dry-run
 
 # 强制刷新
 node scripts/module-analyzer.js --force
+
+# 重试失败任务（不清空状态）
+node scripts/module-analyzer.js --retry-failed
+
+# 从中断处继续
+node scripts/module-analyzer.js --resume
 ```
 
 ### 状态检查
@@ -107,6 +113,37 @@ node scripts/audit-status.js --json
 
 # 测试覆盖
 node scripts/test-status.js --summary
+
+# 测试映射（生成 .test-map.json）
+node scripts/test-mapper.js
+
+# 测试映射预览
+node scripts/test-mapper.js --dry-run --verbose
+
+# 生成模块 TEST.md
+node scripts/test-mapper.js --generate-md
+```
+
+### 测试生成
+
+```bash
+# 批量生成未测试文件的测试
+node scripts/test-generator.js --untested
+
+# 重新生成过期测试
+node scripts/test-generator.js --stale
+
+# 全部（未测试 + 过期）
+node scripts/test-generator.js --all
+
+# 预览模式
+node scripts/test-generator.js --dry-run
+
+# 指定并发数
+node scripts/test-generator.js --concurrency=2
+
+# 后台运行
+node scripts/test-generator.js --daemon
 ```
 
 ### Dashboard
@@ -114,6 +151,12 @@ node scripts/test-status.js --summary
 ```bash
 node scripts/dashboard.js --open
 ```
+
+Dashboard 功能：
+- **任务启动器** - 图形化配置和启动任务
+- **运维监控** - 任务状态、筛选、分组、重试
+- **项目洞察** - 审计统计、测试覆盖、文档覆盖
+- **配置编辑** - 可视化编辑 .stale-config.json
 
 详见 [docs/dashboard.md](docs/dashboard.md)
 
@@ -172,10 +215,33 @@ node scripts/dashboard.js --open
 {
   "include": ["js/agents/**"],
   "ignore": ["tests/**", "docs/**"],
-  "features": { "doc": true, "audit": true, "kanban": true },
+  "features": { "doc": true, "audit": true, "kanban": true, "testAnalysis": true },
   "concurrency": 6
 }
 ```
+
+## 测试追踪
+
+测试状态与 CLAUDE.md/AUDIT.md 统一追踪：
+
+```bash
+# 检查测试覆盖状态
+node scripts/check-stale.js --type=test --stale-only
+
+# 检查所有类型（doc + audit + test）
+node scripts/check-stale.js --type=all --stale-only
+
+# 刷新测试映射
+node scripts/test-mapper.js
+
+# 查看模块测试详情
+node scripts/test-view.js js/agents/core
+```
+
+测试状态类型：
+- **missing** - 模块无测试覆盖
+- **stale** - 源码已修改但测试未更新
+- **fresh** - 测试与源码同步
 
 详见 [docs/config.md](docs/config.md)
 

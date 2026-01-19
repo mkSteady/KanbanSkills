@@ -368,7 +368,8 @@ Feature toggles:
 Execution:
   --dry-run        Preview only (no LLM calls)
   --concurrency=N  Override concurrency (default 6)
-  --resume         Resume crashed task
+  --resume         Resume interrupted task
+  --retry-failed   Retry failed tasks only
   --daemon         Run in background
   --status         Show last result
   --help           Show help
@@ -436,6 +437,7 @@ async function main() {
   const args = parseArgs(normalizedArgs, {
     dryRun: false,
     resume: false,
+    retryFailed: false,
     status: false,
     daemon: false,
     stale: false,
@@ -843,6 +845,7 @@ ${i.context ? `\`\`\`\n${i.context}\n\`\`\`` : ''}
     }
   }, {
     resume: args.resume,
+    retryFailed: args.retryFailed,
     cwd
   });
 }

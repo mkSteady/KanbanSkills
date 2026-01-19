@@ -1258,6 +1258,16 @@ async function handleRequest(req, res) {
       return;
     }
 
+    // Retry failed tasks for a task type
+    if (req.method === 'POST' && url.pathname.match(/^\/api\/tasks\/[^/]+\/retry\/[^/]+$/)) {
+      const [, , , name, , id] = url.pathname.split('/');
+      const projectPath = url.searchParams.get('project') || process.cwd();
+      // Use --retry-failed to only retry failed tasks without clearing state
+      const result = await taskManager.launchTask(name, ['--retry-failed'], projectPath);
+      res.end(JSON.stringify(result));
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/config') {
       const projectPath = url.searchParams.get('project') || process.cwd();
       const configPath = path.join(projectPath, '.project-index', '.stale-config.json');

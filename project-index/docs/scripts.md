@@ -147,6 +147,7 @@ node scripts/module-analyzer.js [options] [path]
 | `--dry-run` | 预览模式（不调用 LLM） |
 | `--concurrency=N` | 并发数（默认 6） |
 | `--resume` | 从中断处继续 |
+| `--retry-failed` | 只重试失败任务（不清空状态） |
 | `--daemon` | 后台运行 |
 | `--status` | 查看上次结果 |
 | `--help` | 显示帮助 |
@@ -192,6 +193,53 @@ node scripts/code-audit.js --resume
 - 只扫描大目录
 - 自动注入小子目录上下文
 - `LARGE_THRESHOLD = { files: 5, lines: 200 }`
+
+### test-generator.js
+
+批量生成测试文件。
+
+**用法**:
+```bash
+node scripts/test-generator.js [options] [path]
+```
+
+**模式选择**:
+
+| 参数 | 说明 |
+|------|------|
+| `--untested` | 为未测试文件生成测试（默认） |
+| `--stale` | 重新生成过期测试 |
+| `--all` | 未测试 + 过期 |
+
+**执行控制**:
+
+| 参数 | 说明 |
+|------|------|
+| `--dry-run` | 预览模式 |
+| `--concurrency=N` | 并发数（默认 3） |
+| `--resume` | 从中断处继续 |
+| `--retry-failed` | 只重试失败任务 |
+| `--daemon` | 后台运行 |
+| `--status` | 查看上次结果 |
+
+**常用组合**:
+
+```bash
+# 为所有未测试文件生成测试
+node scripts/test-generator.js
+
+# 预览将处理的文件
+node scripts/test-generator.js --dry-run
+
+# 指定目录
+node scripts/test-generator.js js/agents/core
+
+# 后台运行高并发
+node scripts/test-generator.js --daemon --concurrency=5
+
+# 重试失败的任务
+node scripts/test-generator.js --retry-failed
+```
 
 ### stale-notify.js
 

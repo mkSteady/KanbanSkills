@@ -16,6 +16,46 @@
     const FAILURE_LABELS = new Set(['失败', '超时', '已取消']);
     const VALUE_ARG_FORMATS = { '--concurrency': 'equals', '--layer': 'separate' };
     const DEPTH_LAYER_MAP = { shallow: '1', normal: '2', deep: '3' };
+
+    // Toast 通知
+    function showToast(message, type = 'info', duration = 3000) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const colors = {
+        success: 'bg-accent-green text-background-dark',
+        error: 'bg-accent-red text-white',
+        info: 'bg-primary text-background-dark',
+        warning: 'bg-accent-yellow text-background-dark'
+      };
+      const icons = {
+        success: 'check_circle',
+        error: 'error',
+        info: 'info',
+        warning: 'warning'
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg ${colors[type]} transform translate-x-full transition-transform duration-300`;
+      toast.innerHTML = `
+        <span class="material-symbols-outlined text-lg">${icons[type]}</span>
+        <span class="text-sm font-medium">${message}</span>
+      `;
+
+      container.appendChild(toast);
+
+      // 动画进入
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-x-full');
+      });
+
+      // 自动消失
+      setTimeout(() => {
+        toast.classList.add('translate-x-full');
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
     const SENSITIVITY_PRESETS = {
       permissive: ['critical'],
       strict: ['critical', 'high', 'medium'],
@@ -383,6 +423,10 @@
     let currentConfig = null;
     let configLastSaved = '--';
     let activeOpsTab = 'logs';
+    // 筛选和分组状态
+    let filterStatus = 'all';
+    let filterType = 'all';
+    let groupByTask = false;
     // 自动刷新间隔（秒）
     const AUTO_REFRESH_INTERVAL = 30000;  // 30 秒
     let refreshInterval = null;
@@ -631,6 +675,7 @@
         'check-stale': 'schedule',
         'test-status': 'bug_report',
         'test-analyzer': 'analytics',
+        'test-generator': 'science',
         'scan': 'search',
         'generate': 'description'
       };
@@ -640,7 +685,8 @@
       const presets = [
         { id: 'module-analyzer', name: '完整索引', hint: '--all', primary: true },
         { id: 'check-stale', name: '检测过期', hint: '--stale-only', primary: false },
-        { id: 'test-status', name: '测试分析', hint: '--untested', primary: false }
+        { id: 'test-status', name: '测试分析', hint: '--untested', primary: false },
+        { id: 'test-generator', name: '生成测试', hint: '--untested', primary: false }
       ];
       presetContainer.innerHTML = presets.map((preset) => {
         const baseClasses = preset.primary
@@ -836,17 +882,140 @@
       return "status-queued";
     }
 
-    function renderOpsTable(tasks) {
+    // 筛选任务
+    function filterTasks(tasks) {
+      return tasks.filter(task => {
+        // 状态筛选
+        if (filterStatus !== 'all') {
+          const statusMap = {
+            'running': '运行中',
+            'failed': task => FAILURE_LABELS.has(task.status),
+            'completed': '成功'
+          };
+          const matcher = statusMap[filterStatus];
+          if (typeof matcher === 'function') {
+            if (!matcher(task)) return false;
+          } else if (task.status !== matcher) {
+            return false;
+          }
+        }
+        // 类型筛选
+        if (filterType !== 'all' && task.taskName !== filterType) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // 按任务类型分组
+    function groupTasks(tasks) {
+      const groups = new Map();
+      for (const task of tasks) {
+        const key = task.taskName || 'unknown';
+        if (!groups.has(key)) {
+          groups.set(key, []);
+        }
+        groups.get(key).push(task);
+      }
+      return groups;
+    }
+
+    // 渲染分组表格
+    function renderGroupedTable(tasks) {
       const tbody = document.getElementById("ops-table-body");
-      if (!tasks || tasks.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td class="px-6 py-8 text-center text-xs text-text-muted" colspan="5">暂无子任务记录</td>
-          </tr>
-        `;
+      const filtered = filterTasks(tasks);
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td class="px-6 py-8 text-center text-xs text-text-muted" colspan="5">无匹配任务</td></tr>`;
         return;
       }
-      tbody.innerHTML = tasks.map((task) => {
+
+      const groups = groupTasks(filtered);
+      let html = '';
+
+      for (const [taskName, groupTasks] of groups) {
+        const runningCount = groupTasks.filter(t => t.status === '运行中').length;
+        const failedCount = groupTasks.filter(t => FAILURE_LABELS.has(t.status)).length;
+        const successCount = groupTasks.filter(t => t.status === '成功').length;
+
+        // 分组标题行
+        html += `
+          <tr class="bg-surface-dark/80 cursor-pointer hover:bg-surface-dark" data-group="${taskName}" onclick="toggleGroup('${taskName}')">
+            <td class="px-6 py-3" colspan="5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="material-symbols-outlined text-sm text-text-muted group-arrow" data-group-arrow="${taskName}">chevron_right</span>
+                  <span class="font-bold">${taskName}</span>
+                  <span class="text-xs text-text-muted">${groupTasks.length} 个任务</span>
+                </div>
+                <div class="flex items-center gap-4 text-xs">
+                  ${runningCount > 0 ? `<span class="text-primary">${runningCount} 运行中</span>` : ''}
+                  ${failedCount > 0 ? `<span class="text-accent-red">${failedCount} 失败</span>` : ''}
+                  ${successCount > 0 ? `<span class="text-accent-green">${successCount} 成功</span>` : ''}
+                </div>
+              </div>
+            </td>
+          </tr>
+        `;
+
+        // 子任务行 (默认折叠)
+        for (const task of groupTasks) {
+          const activeClass = task.id === activeTaskId ? "bg-primary/5" : "";
+          const canRetry = task.canRetry;
+          html += `
+            <tr class="hover:bg-surface-dark/60 cursor-pointer transition-colors ${activeClass} group-row hidden" data-task-id="${task.id}" data-parent-group="${taskName}">
+              <td class="px-6 py-3 pl-12"><span class="status-tag ${statusClass(task.status)}">${task.status.toUpperCase()}</span></td>
+              <td class="px-6 py-3">
+                <div class="flex flex-col">
+                  <span class="text-sm font-bold">${task.name}</span>
+                </div>
+              </td>
+              <td class="px-6 py-3"><code class="text-xs bg-background-dark px-1.5 py-0.5 rounded text-text-muted">${task.target}</code></td>
+              <td class="px-6 py-3 text-xs font-mono text-text-muted">${task.duration}</td>
+              <td class="px-6 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  ${canRetry ? `<button class="p-1.5 bg-accent-red/10 text-accent-red rounded hover:bg-accent-red hover:text-white transition-all" data-action="retry" data-task-id="${task.id}"><span class="material-symbols-outlined text-sm">replay</span></button>` : `<button class="p-1.5 hover:bg-border-dark rounded text-text-muted" data-action="view" data-task-id="${task.id}"><span class="material-symbols-outlined text-sm">visibility</span></button>`}
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+      }
+
+      tbody.innerHTML = html;
+    }
+
+    // 切换分组展开/折叠
+    window.toggleGroup = function(groupName) {
+      const rows = document.querySelectorAll(`[data-parent-group="${groupName}"]`);
+      const arrow = document.querySelector(`[data-group-arrow="${groupName}"]`);
+      const isExpanded = !rows[0]?.classList.contains('hidden');
+
+      rows.forEach(row => {
+        row.classList.toggle('hidden', isExpanded);
+      });
+
+      if (arrow) {
+        arrow.textContent = isExpanded ? 'chevron_right' : 'expand_more';
+      }
+    };
+
+    function renderOpsTable(tasks) {
+      // 如果开启分组模式，使用分组渲染
+      if (groupByTask) {
+        renderGroupedTable(tasks);
+        return;
+      }
+
+      const filtered = filterTasks(tasks);
+      const tbody = document.getElementById("ops-table-body");
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td class="px-6 py-8 text-center text-xs text-text-muted" colspan="5">无匹配任务</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((task) => {
         const activeClass = task.id === activeTaskId ? "bg-primary/5" : "";
         const canRetry = task.canRetry;
         return `
@@ -1259,6 +1428,50 @@
         await startTask("all");
       });
 
+      // 筛选下拉菜单
+      const filterBtn = document.getElementById("ops-filter-btn");
+      const filterMenu = document.getElementById("ops-filter-menu");
+      const filterLabel = document.getElementById("ops-filter-label");
+
+      filterBtn?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        filterMenu.classList.toggle("hidden");
+      });
+
+      // 点击外部关闭菜单
+      document.addEventListener("click", () => {
+        filterMenu?.classList.add("hidden");
+      });
+
+      // 状态筛选
+      document.querySelectorAll("[data-filter-status]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          filterStatus = btn.dataset.filterStatus;
+          const labels = { all: '全部', running: '运行中', failed: '失败', completed: '成功' };
+          filterLabel.textContent = labels[filterStatus] || '全部';
+          filterMenu.classList.add("hidden");
+          renderOpsTable(currentTasks);
+        });
+      });
+
+      // 类型筛选
+      document.querySelectorAll("[data-filter-type]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          filterType = btn.dataset.filterType;
+          filterMenu.classList.add("hidden");
+          renderOpsTable(currentTasks);
+        });
+      });
+
+      // 分组切换
+      document.getElementById("ops-group-toggle")?.addEventListener("click", () => {
+        groupByTask = !groupByTask;
+        const btn = document.getElementById("ops-group-toggle");
+        btn.classList.toggle("bg-primary", groupByTask);
+        btn.classList.toggle("text-background-dark", groupByTask);
+        renderOpsTable(currentTasks);
+      });
+
       document.getElementById("ops-refresh")?.addEventListener("click", async () => {
         console.log("ops-refresh clicked");
         const btn = document.getElementById("ops-refresh");
@@ -1291,7 +1504,7 @@
 
       document.getElementById("launchpad-start").addEventListener("click", async () => {
         if (!selectedTool) {
-          alert('请先选择一个任务');
+          showToast('请先选择一个任务', 'warning');
           return;
         }
         const btn = document.getElementById("launchpad-start");
@@ -1304,11 +1517,12 @@
         btn.disabled = false;
         btn.innerHTML = '<span class="material-symbols-outlined">play_arrow</span> 开始任务';
         if (result && (result.success || result.pid)) {
+          showToast(`任务 ${selectedTool.name} 已启动 (PID: ${result.pid})`, 'success');
           location.hash = 'operations';
           setActiveTab('operations');
           await refreshOperations();
         } else {
-          alert('任务启动失败: ' + (result?.message || result?.error || '未知错误'));
+          showToast('任务启动失败: ' + (result?.message || result?.error || '未知错误'), 'error');
         }
       });
 
