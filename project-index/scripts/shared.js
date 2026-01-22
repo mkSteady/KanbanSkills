@@ -13,8 +13,8 @@ export const DEFAULT_MAX_LINES = 100;
 /** @type {number} Stale threshold in minutes for crash detection */
 export const CRASH_THRESHOLD_MINUTES = 35;
 
-/** @type {number} Default LLM timeout in ms */
-export const DEFAULT_TIMEOUT = 180000;
+/** @type {number} Default LLM timeout in ms (30 minutes) */
+export const DEFAULT_TIMEOUT = 1800000;
 
 /** @type {number} Default concurrency limit */
 export const DEFAULT_CONCURRENCY = 6;

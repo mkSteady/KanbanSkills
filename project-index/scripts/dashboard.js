@@ -149,75 +149,46 @@ async function getTaskStatus(projectPath) {
   const stateDir = path.join(projectPath || __dirname, '.project-index');
   const tasks = [];
 
-  // Module analyzer status
-  const resultFile = path.join(stateDir, '.module-analyzer-result.json');
-  const historyFile = path.join(stateDir, '.module-analyzer-history.json');
-  let maResult = null;
-  let maHistory = [];
-  try {
-    const content = await fs.readFile(resultFile, 'utf-8');
-    maResult = JSON.parse(content);
-  } catch { }
-  try {
-    const historyContent = await fs.readFile(historyFile, 'utf-8');
-    maHistory = JSON.parse(historyContent).slice(-5); // Last 5 runs
-  } catch { }
+  // 遍历所有在 TASK_TYPES 中定义的任务类型
+  for (const name of Object.keys(TASK_TYPES)) {
+    const resultFile = path.join(stateDir, `.${name}-result.json`);
+    const historyFile = path.join(stateDir, `.${name}-history.json`);
 
-  if (maResult) {
-    tasks.push({
-      name: 'module-analyzer',
-      status: maResult.status || 'unknown',
-      processed: maResult.processed,
-      lastRun: maResult.completedAt || maResult.endTime,
-      byStatus: maResult.byStatus,
-      history: maHistory
-    });
-  } else if (maHistory.length > 0) {
-    // 没有 result 文件但有历史记录
-    const lastRun = maHistory[maHistory.length - 1];
-    tasks.push({
-      name: 'module-analyzer',
-      status: lastRun.status || 'completed',
-      processed: lastRun.processed,
-      lastRun: lastRun.completedAt || lastRun.archivedAt,
-      byStatus: lastRun.byStatus,
-      history: maHistory
-    });
-  } else {
-    tasks.push({ name: 'module-analyzer', status: 'never_run' });
-  }
+    let result = null;
+    let history = [];
 
-  // Update-bg status
-  const updateResultFile = path.join(stateDir, '.update-bg-result.json');
-  const updateHistoryFile = path.join(stateDir, '.update-history.json');
-  let ubResult = null;
-  let ubHistory = [];
-  try {
-    const content = await fs.readFile(updateResultFile, 'utf-8');
-    ubResult = JSON.parse(content);
-  } catch { }
-  try {
-    const historyContent = await fs.readFile(updateHistoryFile, 'utf-8');
-    ubHistory = JSON.parse(historyContent).slice(-5);
-  } catch { }
+    try {
+      const content = await fs.readFile(resultFile, 'utf-8');
+      result = JSON.parse(content);
+    } catch { }
 
-  if (ubResult) {
-    tasks.push({
-      name: 'update-bg',
-      status: ubResult.status || 'unknown',
-      lastRun: ubResult.completedAt || ubResult.endTime,
-      history: ubHistory
-    });
-  } else if (ubHistory.length > 0) {
-    const lastRun = ubHistory[ubHistory.length - 1];
-    tasks.push({
-      name: 'update-bg',
-      status: lastRun.status || 'completed',
-      lastRun: lastRun.completedAt || lastRun.archivedAt,
-      history: ubHistory
-    });
-  } else {
-    tasks.push({ name: 'update-bg', status: 'never_run' });
+    try {
+      const historyContent = await fs.readFile(historyFile, 'utf-8');
+      history = JSON.parse(historyContent).slice(-5);
+    } catch { }
+
+    if (result) {
+      tasks.push({
+        name,
+        status: result.status || 'unknown',
+        processed: result.processed,
+        lastRun: result.completedAt || result.endTime,
+        byStatus: result.byStatus,
+        history
+      });
+    } else if (history.length > 0) {
+      const lastRun = history[history.length - 1];
+      tasks.push({
+        name,
+        status: lastRun.status || 'completed',
+        processed: lastRun.processed,
+        lastRun: lastRun.completedAt || lastRun.archivedAt,
+        byStatus: lastRun.byStatus,
+        history
+      });
+    } else {
+      tasks.push({ name, status: 'never_run' });
+    }
   }
 
   return tasks;
@@ -428,8 +399,16 @@ function getDashboardHtml() {
           <div class="text-3xl font-bold text-primary">-</div>
         </div>
         <div id="card-coverage" class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 card-hover">
-          <div class="text-sm font-medium text-gray-500 mb-2">测试覆盖率</div>
-          <div class="text-3xl font-bold text-success">-</div>
+          <div class="text-sm font-medium text-gray-500 mb-2">测试结果</div>
+          <div class="flex items-baseline gap-2">
+            <span id="test-passed" class="text-3xl font-bold text-success">-</span>
+            <span id="test-failed" class="text-sm text-red-600">失败: -</span>
+          </div>
+          <div class="mt-3">
+            <div class="relative h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div id="test-progress" class="absolute left-0 top-0 h-full rounded-full" style="width: 0%; background-color: #22c55e;"></div>
+            </div>
+          </div>
         </div>
         <div id="card-issues" class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 card-hover">
           <div class="text-sm font-medium text-gray-500 mb-2">审计问题</div>
@@ -662,16 +641,26 @@ function getDashboardHtml() {
         return;
       }
 
-      const [projectData, test, audit, tasks] = await Promise.all([
+      const [projectData, test, audit, tasks, testResult] = await Promise.all([
         api('/project-data/' + encodeURIComponent(currentProject)),
         api('/test-status'),
         api('/audit-status'),
-        api('/tasks?project=' + encodeURIComponent(currentProject))
+        api('/tasks?project=' + encodeURIComponent(currentProject)),
+        api('/test-result')
       ]);
 
       document.querySelector('#card-projects .text-3xl').textContent = projectList.length;
       document.querySelector('#card-modules .text-3xl').textContent = projectData.stats?.total || 0;
-      document.querySelector('#card-coverage .text-3xl').textContent = projectData.stats?.failed > 0 ? projectData.stats.failed + ' 失败' : '✓';
+
+      // 测试结果卡片
+      const passed = testResult?.passed || 0;
+      const failed = testResult?.failed || 0;
+      const total = passed + failed;
+      const testPct = total > 0 ? Math.round((passed / total) * 100) : 0;
+      document.getElementById('test-passed').textContent = passed + '/' + total;
+      document.getElementById('test-failed').textContent = '失败: ' + failed;
+      document.getElementById('test-progress').style.width = testPct + '%';
+      document.getElementById('test-progress').style.backgroundColor = failed > 0 ? '#ef4444' : '#22c55e';
 
       // 审计问题卡片
       const totalIssues = audit.totalIssues || 0;
@@ -1169,13 +1158,19 @@ async function handleRequest(req, res) {
 
     if (url.pathname === '/api/test-status') {
       const projectPath = url.searchParams.get('project');
-      res.end(JSON.stringify(await cachedRunScript('test-status.js', ['--untested'], projectPath)));
+      res.end(JSON.stringify(await cachedRunScript('test-status.js', ['--json'], projectPath)));
       return;
     }
 
     if (url.pathname === '/api/audit-status') {
       const projectPath = url.searchParams.get('project');
       res.end(JSON.stringify(await cachedRunScript('audit-status.js', [], projectPath)));
+      return;
+    }
+
+    if (url.pathname === '/api/test-result') {
+      const projectPath = url.searchParams.get('project');
+      res.end(JSON.stringify(await cachedRunScript('test-result.js', ['--save'], projectPath)));
       return;
     }
 
@@ -1324,7 +1319,7 @@ async function main() {
     }
     setTimeout(() => {
       cachedRunScript('audit-status.js', [], process.cwd());
-      cachedRunScript('test-status.js', ['--untested'], process.cwd());
+      cachedRunScript('test-status.js', ['--json'], process.cwd());
     }, 1000);
   });
 

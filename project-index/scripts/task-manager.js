@@ -106,6 +106,37 @@ export const TASK_TYPES = {
       '--resume': '从中断处继续',
       '--retry-failed': '仅重试失败任务'
     }
+  },
+  'test-fix': {
+    script: 'test-fix.js',
+    description: '测试错误自动修复',
+    args: {
+      '--dry-run': '只预览，不执行',
+      '--concurrency': '并发数 (默认 6)',
+      '--offset': '从第 N 个错误开始',
+      '--limit': '处理 N 个错误 (默认 40)',
+      '--resume': '从中断处继续',
+      '--retry-failed': '仅重试失败任务'
+    }
+  },
+  'audit-fix': {
+    script: 'audit-fix.js',
+    description: '审计问题自动修复',
+    args: {
+      '--dry-run': '只预览，不执行',
+      '--severity': '只修复指定级别 (LOW/MEDIUM/HIGH)',
+      '--module': '只修复指定模块',
+      '--concurrency': '并发数 (默认 3)'
+    }
+  },
+  'test-result': {
+    script: 'test-result.js',
+    description: '测试结果提取',
+    args: {
+      '--save': '保存结果到缓存',
+      '--summary': '单行摘要输出',
+      '--errors': '仅显示错误详情'
+    }
   }
 };
 

@@ -70,12 +70,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * @param {number} timeout
  * @returns {Promise<{success: boolean, output: string, sessionId: string|null, error: string|null, isRateLimited: boolean}>}
  */
-export async function runCodeagent(prompt, cwd, timeout = 120000) {
+export async function runCodeagent(prompt, cwd, timeout = 120000, options = {}) {
   return new Promise((resolve) => {
-    // Use "-" to read from stdin
-    const child = spawn('codeagent-wrapper', ['--backend', 'codex', '-'], {
+    // Use "-" to read from stdin, configurable backend via env
+    const backend = process.env.CODEAGENT_BACKEND || 'codex';
+
+    const args = ['--backend', backend, '-'];
+
+    const child = spawn('codeagent-wrapper', args, {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        CODEX_TIMEOUT: String(timeout)  // Pass timeout to codeagent-wrapper
+      }
     });
 
     let stdout = '';
@@ -154,13 +162,22 @@ export async function runCodeagent(prompt, cwd, timeout = 120000) {
 }
 
 function isRateLimitError(code, stderr) {
+  // 429 = rate limit
   if (code === 429) return true;
   if (!stderr) return false;
-  return /\b429\b/.test(stderr) || /rate limit|too many requests/i.test(stderr);
+  // Check for rate limit patterns
+  if (/\b429\b/.test(stderr) || /rate limit|too many requests/i.test(stderr)) {
+    return true;
+  }
+  // Treat 400 with "No available" as transient (CRS proxy account switching)
+  if (/\b400\b/.test(stderr) && /no available|account/i.test(stderr)) {
+    return true;
+  }
+  return false;
 }
 
 /**
- * Run codeagent-wrapper with retry on rate limit
+ * Run codeagent-wrapper with retry on rate limit or transient errors
  * @param {string} prompt
  * @param {string} cwd
  * @param {number} timeout
@@ -171,7 +188,12 @@ function isRateLimitError(code, stderr) {
 export async function runWithRetry(prompt, cwd, timeout, maxRetries = 3, retryDelay = 5000) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const result = await runCodeagent(prompt, cwd, timeout);
-    if (!result.isRateLimited || attempt === maxRetries) {
+
+    // Retry on rate limit or exit code errors (transient failures)
+    const shouldRetry = result.isRateLimited ||
+      (result.error && result.error.startsWith('exit code'));
+
+    if (!shouldRetry || attempt === maxRetries) {
       return result;
     }
 

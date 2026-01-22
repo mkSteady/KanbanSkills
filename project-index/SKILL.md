@@ -1,11 +1,78 @@
 ---
 name: project-index
 description: Use this skill for large project maintenance with layered CLAUDE.md index system. Triggers when users need to (1) analyze and document existing codebases, (2) generate hierarchical CLAUDE.md files for modules, (3) set up incremental update hooks after code changes, or (4) navigate large projects efficiently. Supports legacy project onboarding and automatic context management.
+version: 1.0.0
+triggers:
+  - 分析项目
+  - 生成文档
+  - 代码审计
+  - 测试修复
+  - 测试生成
+  - 检查过期
+  - project index
+  - CLAUDE.md
+  - AUDIT.md
+dependencies:
+  required:
+    - codeagent-wrapper
+  optional:
+    - kanban
+ports:
+  dashboard: 3008
+  kanban: 3007
+tags:
+  - documentation
+  - testing
+  - audit
+  - maintenance
 ---
 
 # Project Index - Layered CLAUDE.md System
 
 自动生成和维护大型项目的层次化 CLAUDE.md 索引系统。
+
+## 功能清单
+
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| **文档生成** | `generate.js` | 生成/更新 CLAUDE.md |
+| **代码审计** | `code-audit.js` | 生成 AUDIT.md，检测安全问题 |
+| **过期检测** | `check-stale.js` | 检测文档/审计/测试是否过期 |
+| **测试映射** | `test-mapper.js` | 源码↔测试映射，生成 .test-map.json |
+| **测试生成** | `test-generator.js` | 批量生成缺失测试 |
+| **测试修复** | `test-fix.js` | 并发修复测试错误 |
+| **审计修复** | `audit-fix.js` | 并发修复审计问题 |
+| **Dashboard** | `dashboard.js` | Web UI (http://localhost:3008) |
+
+## AI 交互指引
+
+### 主动询问
+
+完成批量任务后，应主动询问用户：
+
+```
+任务完成。是否打开 Dashboard 查看详细状态？
+→ 运行: node scripts/dashboard.js --open
+→ 访问: http://localhost:3008
+```
+
+### 任务前检查
+
+执行文档/测试任务前，先检查状态：
+
+```bash
+node scripts/check-stale.js --stale-only --json
+```
+
+根据输出决定处理范围。
+
+## 触发场景
+
+1. **新项目入驻** — 用户说"帮我分析这个项目"、"生成文档"
+2. **遗留项目理解** — 用户说"这个代码库怎么组织的"
+3. **代码修改后** — 检测到核心模块变更，提醒更新文档
+4. **测试维护** — 用户说"生成测试"、"修复测试"
+5. **审计需求** — 用户说"检查安全问题"、"代码审计"
 
 ## 前置依赖
 
@@ -74,91 +141,17 @@ node scripts/dashboard.js --open
 
 ## 常用命令
 
-### 生成与更新
+详见 [docs/commands.md](docs/commands.md)
+
+快速参考：
 
 ```bash
-# 日常维护（只处理过期）
-node scripts/module-analyzer.js
-
-# 补全缺失文档
-node scripts/module-analyzer.js --missing --no-audit
-
-# 补全缺失审计
-node scripts/module-analyzer.js --missing --no-doc
-
-# 全量处理（过期 + 缺失）
-node scripts/module-analyzer.js --all
-
-# 预览模式
-node scripts/module-analyzer.js --all --dry-run
-
-# 强制刷新
-node scripts/module-analyzer.js --force
-
-# 重试失败任务（不清空状态）
-node scripts/module-analyzer.js --retry-failed
-
-# 从中断处继续
-node scripts/module-analyzer.js --resume
+node scripts/module-analyzer.js          # 日常维护
+node scripts/module-analyzer.js --all    # 全量处理
+node scripts/check-stale.js --stale-only # 过期检测
+node scripts/test-fix.js                 # 修复测试错误
+node scripts/dashboard.js --open         # Web UI
 ```
-
-### 状态检查
-
-```bash
-# 过期检测
-node scripts/check-stale.js --stale-only
-
-# 审计状态
-node scripts/audit-status.js --json
-
-# 测试覆盖
-node scripts/test-status.js --summary
-
-# 测试映射（生成 .test-map.json）
-node scripts/test-mapper.js
-
-# 测试映射预览
-node scripts/test-mapper.js --dry-run --verbose
-
-# 生成模块 TEST.md
-node scripts/test-mapper.js --generate-md
-```
-
-### 测试生成
-
-```bash
-# 批量生成未测试文件的测试
-node scripts/test-generator.js --untested
-
-# 重新生成过期测试
-node scripts/test-generator.js --stale
-
-# 全部（未测试 + 过期）
-node scripts/test-generator.js --all
-
-# 预览模式
-node scripts/test-generator.js --dry-run
-
-# 指定并发数
-node scripts/test-generator.js --concurrency=2
-
-# 后台运行
-node scripts/test-generator.js --daemon
-```
-
-### Dashboard
-
-```bash
-node scripts/dashboard.js --open
-```
-
-Dashboard 功能：
-- **任务启动器** - 图形化配置和启动任务
-- **运维监控** - 任务状态、筛选、分组、重试
-- **项目洞察** - 审计统计、测试覆盖、文档覆盖
-- **配置编辑** - 可视化编辑 .stale-config.json
-
-详见 [docs/dashboard.md](docs/dashboard.md)
 
 ## 工作流
 
@@ -202,10 +195,13 @@ Dashboard 功能：
 
 | 文档 | 内容 |
 |------|------|
+| [docs/commands.md](docs/commands.md) | 常用命令详解 |
 | [docs/coverage.md](docs/coverage.md) | 智能覆盖率策略、批量任务发现 |
 | [docs/dashboard.md](docs/dashboard.md) | Web UI 仪表盘详解 |
 | [docs/scripts.md](docs/scripts.md) | 所有脚本参考 |
 | [docs/config.md](docs/config.md) | 配置文件说明 |
+| [docs/testing.md](docs/testing.md) | 测试工具链详解 |
+| [docs/anti-patterns.md](docs/anti-patterns.md) | ⚠️ 禁止的错误模式 |
 
 ## 配置
 
@@ -243,7 +239,7 @@ node scripts/test-view.js js/agents/core
 - **stale** - 源码已修改但测试未更新
 - **fresh** - 测试与源码同步
 
-详见 [docs/config.md](docs/config.md)
+详见 [docs/testing.md](docs/testing.md)
 
 ## 与 Codex 集成
 
@@ -268,3 +264,9 @@ export KANBAN_URL=http://127.0.0.1:3007/api/v1
 ```
 
 未运行 Kanban 服务时静默跳过。
+
+## ⚠️ 禁止的错误模式
+
+测试修复和代码生成时必须避免的反模式。
+
+详见 [docs/anti-patterns.md](docs/anti-patterns.md)
