@@ -1,0 +1,31 @@
+{
+  "name": "project-index",
+  "version": "2.0.0",
+  "description": "Unified project analysis and maintenance toolkit",
+  "type": "module",
+  "bin": {
+    "pi": "./cli.js"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./context": "./lib/context.js",
+    "./deps": "./lib/deps/index.js",
+    "./test": "./lib/test/index.js",
+    "./doc": "./lib/doc/index.js",
+    "./audit": "./lib/audit/index.js",
+    "./llm": "./lib/llm/index.js",
+    "./update": "./lib/update/index.js"
+  },
+  "scripts": {
+    "start": "node cli.js ui"
+  },
+  "keywords": [
+    "project-index",
+    "dependency-graph",
+    "test-runner",
+    "code-audit",
+    "documentation"
+  ],
+  "author": "",
+  "license": "MIT"
+}
